@@ -17,7 +17,8 @@ def extract_text_from_pdf(file):
 def clean_text(text):
     lines = text.splitlines()
     lines = [line.strip() for line in lines if len(line.strip()) > 10 and not line.strip().isdigit()]
-    return " ".join(lines[:30])  # Grab the first 30 informative lines
+    cleaned = " ".join(lines[:30])
+    return cleaned if cleaned else "No usable text found."
 
 def extract_key_clauses(text):
     return {
@@ -69,13 +70,15 @@ if uploaded_file:
 
     # 🧠 Hugging Face API Summary
     st.subheader("🧠 LLM Summary")
-    try:
-        cleaned = clean_text(text)
-        summary = summarize_with_api(cleaned)
-        st.info(summary)
-    except Exception as e:
-        st.error("❌ Hugging Face API summarization failed.")
-        st.exception(e)
+try:
+    cleaned = clean_text(text)
+    if cleaned == "No usable text found.":
+        raise ValueError("The extracted PDF text is too short or empty.")
+    summary = summarize_with_api(cleaned)
+    st.info(summary)
+except Exception as e:
+    st.error("❌ Hugging Face API summarization failed.")
+    st.exception(e)
 
     # 🚨 Risk Detection
     st.subheader("🚨 Risk Flags")
