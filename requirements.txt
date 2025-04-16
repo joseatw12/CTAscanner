@@ -1,6 +1,5 @@
 streamlit
 PyPDF2
 pandas
-transformers
+requests
 openpyxl
-torch
