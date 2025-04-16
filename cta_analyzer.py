@@ -54,6 +54,7 @@ def summarize_with_api(text):
     else:
         raise ValueError(f"API Error {response.status_code}: {response.text}")
 
+# File Upload UI
 uploaded_file = st.file_uploader("Upload one CTA PDF", type=["pdf"])
 
 if uploaded_file:
@@ -70,15 +71,15 @@ if uploaded_file:
 
     # 🧠 Hugging Face API Summary
     st.subheader("🧠 LLM Summary")
-try:
-    cleaned = clean_text(text)
-    if cleaned == "No usable text found.":
-        raise ValueError("The extracted PDF text is too short or empty.")
-    summary = summarize_with_api(cleaned)
-    st.info(summary)
-except Exception as e:
-    st.error("❌ Hugging Face API summarization failed.")
-    st.exception(e)
+    try:
+        cleaned = clean_text(text)
+        if cleaned == "No usable text found.":
+            raise ValueError("The extracted PDF text is too short or empty.")
+        summary = summarize_with_api(cleaned)
+        st.info(summary)
+    except Exception as e:
+        st.error("❌ Hugging Face API summarization failed.")
+        st.exception(e)
 
     # 🚨 Risk Detection
     st.subheader("🚨 Risk Flags")
