@@ -3,3 +3,5 @@ PyPDF2
 pandas
 requests
 openpyxl
+pytesseract
+pdf2image
