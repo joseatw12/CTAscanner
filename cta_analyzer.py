@@ -1,5 +1,7 @@
 import streamlit as st
 from PyPDF2 import PdfReader
+from pdf2image import convert_from_bytes
+import pytesseract
 import pandas as pd
 import re
 import os
@@ -13,11 +15,21 @@ st.write("Upload one Clinical Trial Agreement at a time to receive a clause brea
 
 @st.cache_data
 def extract_text_from_pdf(file):
+    # First try PyPDF2 text extraction
     reader = PdfReader(file)
-    return "\n".join([page.extract_text() or "" for page in reader.pages])
+    text = "\n".join([page.extract_text() or "" for page in reader.pages])
+    if len(text.strip()) > 100:
+        return text
+    else:
+        # If text is too short, apply OCR
+        st.warning("📷 Detected a scanned or image-based PDF. Running OCR...")
+        images = convert_from_bytes(file.read())
+        ocr_text = ""
+        for img in images:
+            ocr_text += pytesseract.image_to_string(img)
+        return ocr_text
 
 def clean_text(text):
-    # Remove lines that are too short or boilerplate
     lines = text.splitlines()
     lines = [line.strip() for line in lines if len(line.strip()) > 10 and not line.strip().isdigit()]
     lines = [line for line in lines if not line.lower().startswith("whereas")]
@@ -90,7 +102,7 @@ if uploaded_file:
         summary = summarize_with_api(summary_input)
         st.info(summary)
 
-        # 📥 Download Summary as Text
+        # 📥 Download Summary
         summary_file = io.StringIO()
         summary_file.write("LLM Summary - Generated on {}\n\n".format(datetime.now().strftime("%Y-%m-%d %H:%M")))
         summary_file.write(summary)
@@ -109,7 +121,7 @@ if uploaded_file:
     else:
         st.success("✅ No major risks detected.")
 
-    # 📥 Download Clause Report
+    # 📥 Clause Report Download
     clause_bytes = io.BytesIO()
     df.to_excel(clause_bytes, index=False, engine="openpyxl")
     st.download_button("Download Clause Report as Excel", clause_bytes.getvalue(), file_name="cta_clauses.xlsx")
