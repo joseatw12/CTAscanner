@@ -3,7 +3,7 @@ from PyPDF2 import PdfReader
 import pandas as pd
 import re
 import os
-from transformers import pipeline, Pipeline
+import requests
 
 st.set_page_config(page_title="CTA Analyzer", layout="wide")
 st.title("📑 Clinical Trial Agreement Analyzer")
@@ -36,13 +36,17 @@ def flag_risks(text):
     return flags
 
 @st.cache_resource
-def get_summarizer() -> Pipeline:
-    hf_token = st.secrets.get("HF_API_KEY") or os.getenv("HF_API_KEY")
-    return pipeline(
-        "summarization",
-        model="philschmid/bart-large-cnn-samsum",  # ✅ Lightweight summarizer
-        use_auth_token=hf_token
+def summarize_with_api(text):
+    hf_token = st.secrets["HF_API_KEY"]
+    response = requests.post(
+        "https://api-inference.huggingface.co/models/sshleifer/distilbart-cnn-12-6",
+        headers={"Authorization": f"Bearer {hf_token}"},
+        json={"inputs": text}
     )
+    if response.status_code == 200:
+        return response.json()[0]["summary_text"]
+    else:
+        raise ValueError(f"API Error {response.status_code}: {response.text}")
 
 uploaded_file = st.file_uploader("Upload one CTA PDF", type=["pdf"])
 
@@ -58,15 +62,13 @@ if uploaded_file:
     st.subheader("🔍 Clause Summary")
     st.dataframe(df, use_container_width=True)
 
-    # 🧠 AI Summarization
+    # 🧠 Hugging Face API Summary
     st.subheader("🧠 LLM Summary")
     try:
-        summarizer = get_summarizer()
-        sample = text[:1000]
-        summary = summarizer(sample, max_length=120, min_length=30, do_sample=False)[0]["summary_text"]
+        summary = summarize_with_api(text[:1000])
         st.info(summary)
     except Exception as e:
-        st.error("❌ Unable to load Hugging Face model. Please check your token, rate limits, or model availability.")
+        st.error("❌ Hugging Face API summarization failed.")
         st.exception(e)
 
     # 🚨 Risk Detection
