@@ -3,7 +3,7 @@ from PyPDF2 import PdfReader
 import pandas as pd
 import re
 import os
-from transformers import pipeline
+from transformers import pipeline, Pipeline
 
 st.set_page_config(page_title="CTA Analyzer", layout="wide")
 st.title("📑 Clinical Trial Agreement Analyzer")
@@ -36,15 +36,20 @@ def flag_risks(text):
     return flags
 
 @st.cache_resource
-def get_summarizer():
-    hf_token = os.getenv("HF_API_KEY")  # Ensure this is set in Streamlit Secrets
-    return pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", use_auth_token=hf_token)
+def get_summarizer() -> Pipeline:
+    hf_token = st.secrets.get("HF_API_KEY") or os.getenv("HF_API_KEY")
+    return pipeline(
+        "summarization",
+        model="philschmid/bart-large-cnn-samsum",  # ✅ Lightweight summarizer
+        use_auth_token=hf_token
+    )
 
 uploaded_file = st.file_uploader("Upload one CTA PDF", type=["pdf"])
 
 if uploaded_file:
     text = extract_text_from_pdf(uploaded_file)
 
+    # 🔍 Clause Extraction
     clauses = extract_key_clauses(text)
     df = pd.DataFrame({
         "Clause": list(clauses.keys()),
@@ -53,12 +58,18 @@ if uploaded_file:
     st.subheader("🔍 Clause Summary")
     st.dataframe(df, use_container_width=True)
 
+    # 🧠 AI Summarization
     st.subheader("🧠 LLM Summary")
-    summarizer = get_summarizer()
-    sample = text[:1000]
-    summary = summarizer(sample, max_length=120, min_length=30, do_sample=False)[0]["summary_text"]
-    st.info(summary)
+    try:
+        summarizer = get_summarizer()
+        sample = text[:1000]
+        summary = summarizer(sample, max_length=120, min_length=30, do_sample=False)[0]["summary_text"]
+        st.info(summary)
+    except Exception as e:
+        st.error("❌ Unable to load Hugging Face model. Please check your token, rate limits, or model availability.")
+        st.exception(e)
 
+    # 🚨 Risk Detection
     st.subheader("🚨 Risk Flags")
     risks = flag_risks(text)
     if risks:
