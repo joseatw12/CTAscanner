@@ -14,6 +14,11 @@ def extract_text_from_pdf(file):
     reader = PdfReader(file)
     return "\n".join([page.extract_text() or "" for page in reader.pages])
 
+def clean_text(text):
+    lines = text.splitlines()
+    lines = [line.strip() for line in lines if len(line.strip()) > 10 and not line.strip().isdigit()]
+    return " ".join(lines[:30])  # Grab the first 30 informative lines
+
 def extract_key_clauses(text):
     return {
         "Sponsor": re.findall(r"Sponsor.*", text[:2000]),
@@ -39,7 +44,7 @@ def flag_risks(text):
 def summarize_with_api(text):
     hf_token = st.secrets["HF_API_KEY"]
     response = requests.post(
-        "https://api-inference.huggingface.co/models/sshleifer/distilbart-cnn-12-6",
+        "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
         headers={"Authorization": f"Bearer {hf_token}"},
         json={"inputs": text}
     )
@@ -65,7 +70,8 @@ if uploaded_file:
     # 🧠 Hugging Face API Summary
     st.subheader("🧠 LLM Summary")
     try:
-        summary = summarize_with_api(text[:1000])
+        cleaned = clean_text(text)
+        summary = summarize_with_api(cleaned)
         st.info(summary)
     except Exception as e:
         st.error("❌ Hugging Face API summarization failed.")
