@@ -74,9 +74,19 @@ if uploaded_file:
     try:
         cleaned = clean_text(text)
         if cleaned == "No usable text found.":
-            raise ValueError("The extracted PDF text is too short or empty.")
-        summary = summarize_with_api(cleaned)
+            fallback = text.strip()[:1000]
+            if not fallback:
+                raise ValueError("The extracted PDF text is too short or empty.")
+            summary_input = fallback
+        else:
+            summary_input = cleaned
+
+        # Optional: Show what’s being summarized
+        st.text_area("📝 Text sent to summarizer", summary_input, height=200)
+
+        summary = summarize_with_api(summary_input)
         st.info(summary)
+
     except Exception as e:
         st.error("❌ Hugging Face API summarization failed.")
         st.exception(e)
