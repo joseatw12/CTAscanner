@@ -4,6 +4,8 @@ import pandas as pd
 import re
 import os
 import requests
+import io
+from datetime import datetime
 
 st.set_page_config(page_title="CTA Analyzer", layout="wide")
 st.title("📑 Clinical Trial Agreement Analyzer")
@@ -15,8 +17,11 @@ def extract_text_from_pdf(file):
     return "\n".join([page.extract_text() or "" for page in reader.pages])
 
 def clean_text(text):
+    # Remove lines that are too short or purely numbers
     lines = text.splitlines()
     lines = [line.strip() for line in lines if len(line.strip()) > 10 and not line.strip().isdigit()]
+    lines = [line for line in lines if not line.lower().startswith("whereas")]  # Remove legal preambles
+    lines = [line for line in lines if "confidential" not in line.lower()]
     cleaned = " ".join(lines[:30])
     return cleaned if cleaned else "No usable text found."
 
@@ -45,7 +50,7 @@ def flag_risks(text):
 def summarize_with_api(text):
     hf_token = st.secrets["HF_API_KEY"]
     response = requests.post(
-        "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
+        "https://api-inference.huggingface.co/models/ainize/bart-base-legal-summarizer",
         headers={"Authorization": f"Bearer {hf_token}"},
         json={"inputs": text}
     )
@@ -81,11 +86,16 @@ if uploaded_file:
         else:
             summary_input = cleaned
 
-        # Optional: Show what’s being summarized
         st.text_area("📝 Text sent to summarizer", summary_input, height=200)
 
         summary = summarize_with_api(summary_input)
         st.info(summary)
+
+        # 📥 Download Summary
+        summary_file = io.StringIO()
+        summary_file.write("LLM Summary - Generated on {}\n\n".format(datetime.now().strftime("%Y-%m-%d %H:%M")))
+        summary_file.write(summary)
+        st.download_button("Download Summary as TXT", summary_file.getvalue(), file_name="cta_summary.txt")
 
     except Exception as e:
         st.error("❌ Hugging Face API summarization failed.")
@@ -99,5 +109,10 @@ if uploaded_file:
             st.warning(r)
     else:
         st.success("✅ No major risks detected.")
+
+    # 📥 Download Clause Summary as Excel
+    clause_bytes = io.BytesIO()
+    df.to_excel(clause_bytes, index=False, engine="openpyxl")
+    st.download_button("Download Clause Report as Excel", clause_bytes.getvalue(), file_name="cta_clauses.xlsx")
 else:
     st.info("Please upload a single PDF to begin analysis.")
