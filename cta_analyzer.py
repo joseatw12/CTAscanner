@@ -118,24 +118,24 @@ def extract_milestones(text):
     return pd.DataFrame(results)
 
 # --- Payment Term Visualizer ---
-PAYMENT_PATTERNS = {
-    "Startup Fee": r"(startup|start-up) fee.*?\$\d[\d,]*(?:\.\d{2})?",
-    "Per Visit Payment": r"\$\d[\d,]*(?:\.\d{2})?.*?(per visit|per subject)",
-    "Closeout Payment": r"(closeout|close-out) fee.*?\$\d[\d,]*(?:\.\d{2})?",
-    "IRB Fee": r"irb (submission|review).*?\$\d[\d,]*(?:\.\d{2})?",
-    "Overhead / Admin Fee": r"(overhead|administrative).*?(fee|charge).*?\d{1,2} ?%"
+# PAYMENT_PATTERNS = {
+#     "Startup Fee": r"(startup|start-up) fee.*?\$\d[\d,]*(?:\.\d{2})?",
+#     "Per Visit Payment": r"\$\d[\d,]*(?:\.\d{2})?.*?(per visit|per subject)",
+#     "Closeout Payment": r"(closeout|close-out) fee.*?\$\d[\d,]*(?:\.\d{2})?",
+#     "IRB Fee": r"irb (submission|review).*?\$\d[\d,]*(?:\.\d{2})?",
+#     "Overhead / Admin Fee": r"(overhead|administrative).*?(fee|charge).*?\d{1,2} ?%"
 }
 
-def extract_payment_terms(text):
-    results = []
-    for label, pattern in PAYMENT_PATTERNS.items():
-        matches = re.findall(pattern, text, re.IGNORECASE)
-        results.append({
-            "Payment Type": label,
-            "Mentioned?": "✅ Yes" if matches else "❌ No",
-            "Examples": "; ".join([match[0] if isinstance(match, tuple) else match for match in matches[:2]])
-        })
-    return pd.DataFrame(results)
+# def extract_payment_terms(text):
+#     results = []
+#     for label, pattern in PAYMENT_PATTERNS.items():
+#         matches = re.findall(pattern, text, re.IGNORECASE)
+#         results.append({
+#             "Payment Type": label,
+#             "Mentioned?": "✅ Yes" if matches else "❌ No",
+#             "Examples": "; ".join([match[0] if isinstance(match, tuple) else match for match in matches[:2]])
+#         })
+#     return pd.DataFrame(results)
 
 def visualize_payments(df):
     chart_df = df[df["Mentioned?"] == "✅ Yes"].copy()
@@ -161,10 +161,10 @@ if uploaded_file:
     st.dataframe(milestone_df, use_container_width=True)
 
     # 💵 Payment Term Analyzer (Custom for BI 1404-0043 Format)
-st.subheader("💵 Payment Terms Summary (Custom)")
+    st.subheader("💵 Payment Terms Summary (Custom)")
 
-payment_df = extract_payment_terms_custom(text)
-st.dataframe(payment_df, use_container_width=True)
+    payment_df = extract_payment_terms_custom(text)
+    st.dataframe(payment_df, use_container_width=True)
 
 # Visualize fixed known payments
 try:
