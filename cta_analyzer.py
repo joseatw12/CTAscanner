@@ -101,13 +101,21 @@ def flag_risks(text):
         risks.append("⚠️ Payment obligation is unclear")
     return risks
 
-# === SUMMARIZATION ===
+# === SUMMARIZATION WITH CUSTOM PROMPT ===
 @st.cache_resource
 def summarize_with_api(text):
+    hf_token = st.secrets["HF_API_KEY"]
+    prompt = (
+        "Summarize this Clinical Trial Agreement focusing only on the key elements: "
+        "Sponsor and site information, trial objective and phase, study duration, "
+        "milestone events (e.g., FSI, LSO), payment terms, injury reimbursement, "
+        "termination clauses, and IP/confidentiality terms. Be brief and professional.\n\n"
+        f"{text}"
+    )
     response = requests.post(
         "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
-        headers={"Authorization": f"Bearer {st.secrets['HF_API_KEY']}"},
-        json={"inputs": text}
+        headers={"Authorization": f"Bearer {hf_token}"},
+        json={"inputs": prompt}
     )
     if response.status_code == 200:
         return response.json()[0]["summary_text"]
@@ -136,7 +144,6 @@ if uploaded_file:
     payment_df = extract_payment_terms_custom(text)
     st.dataframe(payment_df, use_container_width=True)
 
-    # 💰 Bar Chart for Fixed Terms
     try:
         chart_data = {
             "Startup Fee": 10000,
@@ -144,7 +151,7 @@ if uploaded_file:
             "Screen Failures": 3017.02,
             "IRB Fees": 4000,
             "Patient Stipend": 5400,
-            "Final Closeout (DB Lock)": 2000  # estimated value
+            "Final Closeout (DB Lock)": 2000
         }
         chart_df = pd.DataFrame.from_dict(chart_data, orient="index", columns=["Amount (USD)"])
         st.subheader("💰 Estimated Payment Structure")
@@ -153,18 +160,14 @@ if uploaded_file:
         st.warning("Unable to generate payment chart.")
         st.exception(e)
 
-    # 🧠 LLM Summary
-    st.subheader("🧠 LLM Summary")
+    # 📝 Executive Summary
+    st.subheader("📝 Executive Summary")
     try:
         cleaned = clean_text(text)
         summary_input = cleaned if cleaned != "No usable text found." else text.strip()[:1000]
         st.text_area("📝 Text sent to summarizer", summary_input, height=200)
         summary = summarize_with_api(summary_input)
         st.info(summary)
-
-        summary_file = io.StringIO()
-        summary_file.write(f"LLM Summary - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n{summary}")
-        st.download_button("Download Summary as TXT", summary_file.getvalue(), file_name="cta_summary.txt")
     except Exception as e:
         st.error("❌ Hugging Face API summarization failed.")
         st.exception(e)
