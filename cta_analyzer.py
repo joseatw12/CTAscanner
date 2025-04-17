@@ -63,16 +63,45 @@ def summarize_with_api(text):
     else:
         raise ValueError(f"API Error {response.status_code}: {response.text}")
 
+# --- Milestone Tracker Setup ---
+MILESTONE_PATTERNS = {
+    "First Subject In (FSI)": r"\b(first subject in|fsi)\b",
+    "Last Subject Out (LSO)": r"\b(last subject out|lso)\b",
+    "Enrollment Completion": r"\benrollment completion\b",
+    "Study Closeout": r"\b(study close[- ]?out|close[- ]?out visit)\b",
+    "IRB Approval": r"\birb (approval|submission)\b",
+    "Site Activation": r"\b(site activation|activation date)\b"
+}
+
+def extract_milestones(text):
+    results = []
+    for label, pattern in MILESTONE_PATTERNS.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        results.append({
+            "Milestone": label,
+            "Mentioned?": "✅ Yes" if match else "❌ No",
+            "Example": match.group(0) if match else ""
+        })
+    return pd.DataFrame(results)
+
+# --- Main App Logic ---
 uploaded_file = st.file_uploader("Upload one CTA PDF", type=["pdf"])
 
 if uploaded_file:
     text = extract_text_from_pdf(uploaded_file)
 
+    # 🔍 Clause Summary
     st.subheader("🔍 Clause Summary")
     clauses = extract_key_clauses(text)
     df = pd.DataFrame({"Clause": list(clauses.keys()), "Extracted Info": [str(v) for v in clauses.values()]})
     st.dataframe(df, use_container_width=True)
 
+    # 📆 Milestone Tracker
+    st.subheader("📆 Clinical Trial Milestones")
+    milestone_df = extract_milestones(text)
+    st.dataframe(milestone_df, use_container_width=True)
+
+    # 🧠 LLM Summary
     st.subheader("🧠 LLM Summary")
     try:
         cleaned = clean_text(text)
@@ -88,6 +117,7 @@ if uploaded_file:
         st.error("❌ Hugging Face API summarization failed.")
         st.exception(e)
 
+    # 🚨 Risk Flags
     st.subheader("🚨 Risk Flags")
     risks = flag_risks(text)
     if risks:
@@ -96,6 +126,7 @@ if uploaded_file:
     else:
         st.success("✅ No major risks detected.")
 
+    # 📥 Clause Report Download
     clause_bytes = io.BytesIO()
     df.to_excel(clause_bytes, index=False, engine="openpyxl")
     st.download_button("Download Clause Report as Excel", clause_bytes.getvalue(), file_name="cta_clauses.xlsx")
