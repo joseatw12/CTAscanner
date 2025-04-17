@@ -12,6 +12,7 @@ st.set_page_config(page_title="CTA Analyzer", layout="wide")
 st.title("📑 Clinical Trial Agreement Analyzer")
 st.write("Upload one Clinical Trial Agreement at a time to receive a clause breakdown, AI summary, and risk flags.")
 
+# === PDF TEXT EXTRACTION ===
 @st.cache_data
 def extract_text_from_pdf(file):
     reader = PdfReader(file)
@@ -23,39 +24,55 @@ def extract_text_from_pdf(file):
         images = convert_from_bytes(file.read())
         return "".join([pytesseract.image_to_string(img) for img in images])
 
+# === CUSTOM PAYMENT TERMS (Tailored to BIPI Format) ===
 def extract_payment_terms_custom(text):
     terms = []
 
-    # Startup Fee
     if "Administrative Start-Up Fee" in text or "Administrative Start-Up Fees" in text:
         terms.append(("Startup Fee", "✅ Yes", "$10,000"))
 
-    # Per Visit / Per Patient
     if "Total Listed Fees: $41,254.93" in text or "Total Cost per Patient" in text:
         terms.append(("Per Patient Visits", "✅ Yes", "$41,254.93"))
 
-    # Final cleanup payment
     if "Final payment will consist of" in text or "Fee for cleaning and answering queries" in text:
         terms.append(("Final Closeout (DB Lock)", "✅ Yes", "Included in Final Payment"))
 
-    # IRB
     if "Local Initial IRB Pass-Through Fees" in text:
         terms.append(("IRB Fees", "✅ Yes", "Up to $4,000"))
 
-    # Screen Failures
     if "Screen Failure Visit Fee" in text:
         terms.append(("Screen Failures", "✅ Yes", "$3,017.02"))
 
-    # Patient Stipend
     if "Patient Stipend" in text:
         terms.append(("Patient Stipend", "✅ Yes", "$150/visit, ~$5,400 total"))
 
-    # Misc invoiceables (re-consent, SAE, MRI, etc.)
     if "Invoiceable Items" in text:
         terms.append(("Misc. Items (MRI, Re-consent, etc.)", "✅ Yes", "See appendix"))
 
     return pd.DataFrame(terms, columns=["Payment Type", "Mentioned?", "Details"])
 
+# === MILESTONE TRACKER ===
+MILESTONE_PATTERNS = {
+    "First Subject In (FSI)": r"\b(first subject in|fsi)\b",
+    "Last Subject Out (LSO)": r"\b(last subject out|lso)\b",
+    "Enrollment Completion": r"\benrollment completion\b",
+    "Study Closeout": r"\b(study close[- ]?out|close[- ]?out visit)\b",
+    "IRB Approval": r"\birb (approval|submission)\b",
+    "Site Activation": r"\b(site activation|activation date)\b"
+}
+
+def extract_milestones(text):
+    results = []
+    for label, pattern in MILESTONE_PATTERNS.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        results.append({
+            "Milestone": label,
+            "Mentioned?": "✅ Yes" if match else "❌ No",
+            "Example": match.group(0) if match else ""
+        })
+    return pd.DataFrame(results)
+
+# === CLAUSE EXTRACTION ===
 def clean_text(text):
     lines = text.splitlines()
     lines = [line.strip() for line in lines if len(line.strip()) > 10 and not line.strip().isdigit()]
@@ -84,6 +101,7 @@ def flag_risks(text):
         risks.append("⚠️ Payment obligation is unclear")
     return risks
 
+# === SUMMARIZATION ===
 @st.cache_resource
 def summarize_with_api(text):
     response = requests.post(
@@ -96,54 +114,7 @@ def summarize_with_api(text):
     else:
         raise ValueError(f"API Error {response.status_code}: {response.text}")
 
-# --- Milestone Tracker ---
-MILESTONE_PATTERNS = {
-    "First Subject In (FSI)": r"\b(first subject in|fsi)\b",
-    "Last Subject Out (LSO)": r"\b(last subject out|lso)\b",
-    "Enrollment Completion": r"\benrollment completion\b",
-    "Study Closeout": r"\b(study close[- ]?out|close[- ]?out visit)\b",
-    "IRB Approval": r"\birb (approval|submission)\b",
-    "Site Activation": r"\b(site activation|activation date)\b"
-}
-
-def extract_milestones(text):
-    results = []
-    for label, pattern in MILESTONE_PATTERNS.items():
-        match = re.search(pattern, text, re.IGNORECASE)
-        results.append({
-            "Milestone": label,
-            "Mentioned?": "✅ Yes" if match else "❌ No",
-            "Example": match.group(0) if match else ""
-        })
-    return pd.DataFrame(results)
-
-# --- Payment Term Visualizer ---
-# PAYMENT_PATTERNS = {
-#     "Startup Fee": r"(startup|start-up) fee.*?\$\d[\d,]*(?:\.\d{2})?",
-#     "Per Visit Payment": r"\$\d[\d,]*(?:\.\d{2})?.*?(per visit|per subject)",
-#     "Closeout Payment": r"(closeout|close-out) fee.*?\$\d[\d,]*(?:\.\d{2})?",
-#     "IRB Fee": r"irb (submission|review).*?\$\d[\d,]*(?:\.\d{2})?",
-#     "Overhead / Admin Fee": r"(overhead|administrative).*?(fee|charge).*?\d{1,2} ?%"
-}
-
-# def extract_payment_terms(text):
-#     results = []
-#     for label, pattern in PAYMENT_PATTERNS.items():
-#         matches = re.findall(pattern, text, re.IGNORECASE)
-#         results.append({
-#             "Payment Type": label,
-#             "Mentioned?": "✅ Yes" if matches else "❌ No",
-#             "Examples": "; ".join([match[0] if isinstance(match, tuple) else match for match in matches[:2]])
-#         })
-#     return pd.DataFrame(results)
-
-def visualize_payments(df):
-    chart_df = df[df["Mentioned?"] == "✅ Yes"].copy()
-    chart_df["Amount (est.)"] = 1000  # Placeholder for now
-    st.subheader("💰 Estimated Payment Structure (Visualized)")
-    st.bar_chart(chart_df.set_index("Payment Type")["Amount (est.)"])
-
-# --- Main App Logic ---
+# === STREAMLIT INTERFACE ===
 uploaded_file = st.file_uploader("Upload one CTA PDF", type=["pdf"])
 
 if uploaded_file:
@@ -160,28 +131,27 @@ if uploaded_file:
     milestone_df = extract_milestones(text)
     st.dataframe(milestone_df, use_container_width=True)
 
-    # 💵 Payment Term Analyzer (Custom for BI 1404-0043 Format)
+    # 💵 Payment Terms Summary (Custom)
     st.subheader("💵 Payment Terms Summary (Custom)")
-
     payment_df = extract_payment_terms_custom(text)
     st.dataframe(payment_df, use_container_width=True)
 
-# Visualize fixed known payments
-try:
-    chart_data = {
-        "Startup Fee": 10000,
-        "Per Patient Visits": 41254.93,
-        "Screen Failures": 3017.02,
-        "IRB Fees": 4000,
-        "Patient Stipend": 5400,
-        "Final Closeout (DB Lock)": 2000  # estimate
-    }
-    chart_df = pd.DataFrame.from_dict(chart_data, orient="index", columns=["Amount (USD)"])
-    st.subheader("💰 Estimated Payment Structure")
-    st.bar_chart(chart_df)
-except Exception as e:
-    st.warning("Unable to generate payment chart.")
-    st.exception(e)
+    # 💰 Bar Chart for Fixed Terms
+    try:
+        chart_data = {
+            "Startup Fee": 10000,
+            "Per Patient Visits": 41254.93,
+            "Screen Failures": 3017.02,
+            "IRB Fees": 4000,
+            "Patient Stipend": 5400,
+            "Final Closeout (DB Lock)": 2000  # estimated value
+        }
+        chart_df = pd.DataFrame.from_dict(chart_data, orient="index", columns=["Amount (USD)"])
+        st.subheader("💰 Estimated Payment Structure")
+        st.bar_chart(chart_df)
+    except Exception as e:
+        st.warning("Unable to generate payment chart.")
+        st.exception(e)
 
     # 🧠 LLM Summary
     st.subheader("🧠 LLM Summary")
